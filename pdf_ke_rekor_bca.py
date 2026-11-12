@@ -23,7 +23,7 @@ Nama file hasil: REKOR_<no rekening>_<tahun>-<bulan>.xlsx
 
 Isi kolom template:
   C  Tanggal              : tanggal transaksi
-  D  Keterangan Bank      : jenis transaksi di PDF (mis. TRSF E-BANKING CR)
+  D  Keterangan Bank      : jenis transaksi di PDF (mis. TRSF E-BANKING CR), tanpa tanggal
   F  Keterangan 2         : nama lawan transaksi (lihat fungsi nama_lawan)
   I  Debit                : uang MASUK  (= mutasi CR di PDF)
   J  Kredit               : uang KELUAR (= mutasi DB di PDF)
@@ -282,6 +282,13 @@ def nama_lawan(jenis, detail):
     return " ".join(d)                                # setoran, tarikan, cek, dll
 
 
+def keterangan_bank(jenis, jenis_extra):
+    """Jenis transaksi untuk kolom D. Baris tambahan yang berisi tanggal
+    (mis. 'TANGGAL :12/02') tidak dimasukkan."""
+    sisa = [x for x in jenis_extra if not re.search(r"\d{1,2}\s*/\s*\d{1,2}", x)]
+    return " ".join([jenis] + sisa).strip()
+
+
 def keterangan_lengkap(detail):
     """Semua baris keterangan transaksi di PDF digabung jadi satu teks (kolom E)."""
     teks = " ".join(x.strip() for x in detail if x.strip())
@@ -323,7 +330,7 @@ def tulis_excel(template, info, hasil, path_output):
     r = BARIS_SALDO_AWAL
     for no, t in enumerate(hasil["transaksi"], start=1):
         r += 1
-        jenis = " ".join([t["Jenis Transaksi"]] + t["jenis_extra"]).strip()
+        jenis = keterangan_bank(t["Jenis Transaksi"], t["jenis_extra"])
         nilai = {
             1: no, 2: BANK, 3: t["Tanggal"], 4: jenis,
             5: keterangan_lengkap(t["detail"]),
