@@ -30,7 +30,8 @@ Isi kolom template:
   K  Saldo                : rumus =K(atas)+I-J ; K7 = Saldo Awal dari PDF
   L  Saldo Bank           : saldo yang tercetak di PDF (hanya baris yang ada saldonya)
   M  Selisih              : =K-L  (hanya di baris yang L-nya terisi)
-  E, G, H dibiarkan kosong (diisi manual).
+  E  Keterangan 1         : keterangan transaksi lengkap dari PDF (semua baris digabung)
+  G, H dibiarkan kosong (diisi manual).
 """
 
 import argparse
@@ -281,6 +282,12 @@ def nama_lawan(jenis, detail):
     return " ".join(d)                                # setoran, tarikan, cek, dll
 
 
+def keterangan_lengkap(detail):
+    """Semua baris keterangan transaksi di PDF digabung jadi satu teks (kolom E)."""
+    teks = " ".join(x.strip() for x in detail if x.strip())
+    return teks or None
+
+
 def cek_laporan(hasil):
     """True bila total & jumlah transaksi cocok dengan ringkasan di PDF."""
     v = validasi(hasil)
@@ -319,6 +326,7 @@ def tulis_excel(template, info, hasil, path_output):
         jenis = " ".join([t["Jenis Transaksi"]] + t["jenis_extra"]).strip()
         nilai = {
             1: no, 2: BANK, 3: t["Tanggal"], 4: jenis,
+            5: keterangan_lengkap(t["detail"]),
             6: nama_lawan(t["Jenis Transaksi"], t["detail"]),
             9: t["Kredit"],   # uang masuk  -> kolom Debit
             10: t["Debit"],   # uang keluar -> kolom Kredit
