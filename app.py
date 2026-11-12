@@ -18,6 +18,7 @@ import streamlit as st
 from pdf_ke_rekor_bca import (
     bulan_tahun,
     cek_laporan,
+    keterangan_lengkap,
     nama_lawan,
     proses_pdf,
     tulis_excel,
@@ -54,6 +55,7 @@ def olah_pdf(data: bytes, template_bytes: bytes):
         "No": range(1, len(trx) + 1),
         "Tanggal": [t["Tanggal"].date() for t in trx],
         "Keterangan Bank": [" ".join([t["Jenis Transaksi"]] + t["jenis_extra"]).strip() for t in trx],
+        "Keterangan 1 (Lengkap)": [keterangan_lengkap(t["detail"]) for t in trx],
         "Nama Lawan Transaksi": [nama_lawan(t["Jenis Transaksi"], t["detail"]) for t in trx],
         "Debit (Masuk)": [t["Kredit"] for t in trx],
         "Kredit (Keluar)": [t["Debit"] for t in trx],
@@ -111,7 +113,7 @@ def main():
         st.markdown(
             "**Catatan**\n\n"
             "- Uang masuk (CR) → kolom **Debit**; uang keluar (DB) → kolom **Kredit**.\n"
-            "- Kolom Keterangan 1, Jenis Transaksi, dan No Faktur Pajak dikosongkan.\n"
+            "- Keterangan 1 diisi keterangan transaksi lengkap; Jenis Transaksi dan No Faktur Pajak dikosongkan.\n"
             "- Hanya untuk PDF digital format giro BCA (bukan hasil scan).\n"
             "- File diproses di memori dan tidak disimpan oleh aplikasi."
         )
