@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 
 from bank_parsers import BANK_PDF, csv_parser
-from bank_parsers.pipeline import olah_csv, olah_pdf
+from bank_parsers.pipeline import csv_bca_terdeteksi, olah_csv, olah_csv_bca, olah_pdf
 
 
 def kumpulkan(argumen):
@@ -61,7 +61,10 @@ def main():
     for p in daftar:
         try:
             data = p.read_bytes()
-            if p.suffix.lower() == ".csv":
+            if p.suffix.lower() == ".csv" and csv_bca_terdeteksi(data):
+                print("      format CSV KlikBCA Bisnis terdeteksi (kolom dibaca otomatis)")
+                r = olah_csv_bca(data, tpl)
+            elif p.suffix.lower() == ".csv":
                 header, _, _ = csv_parser.muat_csv(data)
                 peta = csv_parser.tebak_pemetaan(header)
                 print(f"      kolom CSV: { {k: v for k, v in peta.items() if v} }")
@@ -74,6 +77,8 @@ def main():
             (keluar / r["nama_file"]).write_bytes(r["excel"])
             status = "OK" if r["ok"] else ("INFO" if not r["bisa_diverifikasi"] else "CEK")
             print(f"[{status}] {p.name} [{r['bank']}] -> {r['nama_file']} ({len(r['df'])} transaksi)")
+            for c in r.get("catatan", []):
+                print(f"      catatan: {c}")
             for pesan in ([] if r["ok"] else r["pesan"]):
                 print(f"      {pesan}")
             sukses += 1
