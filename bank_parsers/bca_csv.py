@@ -26,9 +26,15 @@ LABEL_EXCEL = "BCA"
 
 RE_TGL = re.compile(r"^(\d{2})/(\d{2})(?:/(\d{2}|\d{4}))?$")
 RE_JUMLAH = re.compile(r"^\s*([\d,]+\.\d{2})\s*(DB|CR)\s*$", re.I)
-RE_NOMINAL_DEPAN = re.compile(r"^(\d+\.\d{2})(?=\D|$)\s*")
+RE_NOMINAL_DEPAN = re.compile(r"^(\d+\.\d{2})\s*")
 RE_NOMINAL_AKHIR = re.compile(r"\s+(\d+\.\d{2})\s*$")
 TOLERANSI = 0.01
+
+# Penanda tanggal valuta yang disisipkan bank sebagai baris/bagian tersendiri, mis.
+# "TANGGAL :03/05", atau tanggal polos "03/05" / "03/05/2026". Bukan bagian dari keterangan.
+_TGL = r"\d{1,2}\s*/\s*\d{1,2}(?:\s*/\s*\d{2,4})?"
+RE_TANGGAL_SAJA = re.compile(rf"^(?:(?:TANGGAL|TGL)\s*:?\s*)?{_TGL}$", re.I)
+RE_TANGGAL_AWAL = re.compile(rf"^(?:TANGGAL|TGL)\s*:?\s*{_TGL}\s+", re.I)
 
 
 def cocok(data):
@@ -95,6 +101,17 @@ def _pecah_keterangan(bagian, jumlah):
     if len(bagian) == 1:
         bagian = [b for b in re.split(r"\s{2,}", bagian[0].strip()) if b.strip()]
     bagian = [re.sub(r"\s+", " ", b).strip() for b in bagian if b and b.strip()]
+    # buang tanggal valuta (mis. "TANGGAL :03/05") supaya tidak jadi Keterangan Bank;
+    # bagian berikutnya (kode transaksi, mis. "TRSF E-BANKING CR0305/FTSCY/WS95271") naik
+    # menjadi jenis. Angka tanggal di dalam kode transaksi (CR0305) tidak disentuh.
+    bersih = []
+    for b in bagian:
+        if RE_TANGGAL_SAJA.match(b):
+            continue
+        b = RE_TANGGAL_AWAL.sub("", b).strip()
+        if b:
+            bersih.append(b)
+    bagian = bersih
     if not bagian:
         return "", []
 
