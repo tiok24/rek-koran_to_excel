@@ -310,7 +310,9 @@ def cek_laporan(hasil):
             and v["baris_saldo_tak_cocok"] == 0)
 
 
-def tulis_excel(template, info, hasil, path_output):
+def tulis_excel(template, info, hasil, path_output, bank=BANK):
+    """`bank` = label bank di sel A2 / nama sheet / kolom B. Transaksi dari parser bank
+    lain boleh membawa kolom siap pakai: ket_bank, ket_lengkap, nama_lawan."""
     wb = load_workbook(template)
     ws = wb.worksheets[0]
     gaya = [copy(ws.cell(BARIS_DATA_PERTAMA, c)._style) for c in range(1, JML_KOLOM + 1)]
@@ -322,19 +324,24 @@ def tulis_excel(template, info, hasil, path_output):
 
     bln, thn = bulan_tahun(info["Periode"])
     ws["A1"] = info["Nama"]
-    ws["A2"] = f"REKENING BANK {BANK} {info['No Rekening']}"
+    ws["A2"] = f"REKENING BANK {bank} {info['No Rekening']}"
     ws["A3"] = f"TAHUN {thn}"
-    ws.title = f"{BANK} {info['No Rekening'][-4:]}"
+    ws.title = f"{bank} {info['No Rekening'][-4:]}"
     ws.cell(BARIS_SALDO_AWAL, 11).value = hasil["saldo_awal"]
 
     r = BARIS_SALDO_AWAL
     for no, t in enumerate(hasil["transaksi"], start=1):
         r += 1
-        jenis = keterangan_bank(t["Jenis Transaksi"], t["jenis_extra"])
+        if "ket_bank" in t:   # parser bank lain sudah menyiapkan ketiga kolom ini
+            jenis, ket1, ket2 = t["ket_bank"], t["ket_lengkap"], t["nama_lawan"]
+        else:                 # BCA (perilaku asli)
+            jenis = keterangan_bank(t["Jenis Transaksi"], t["jenis_extra"])
+            ket1 = keterangan_lengkap(t["detail"])
+            ket2 = nama_lawan(t["Jenis Transaksi"], t["detail"])
         nilai = {
-            1: no, 2: BANK, 3: t["Tanggal"], 4: jenis,
-            5: keterangan_lengkap(t["detail"]),
-            6: nama_lawan(t["Jenis Transaksi"], t["detail"]),
+            1: no, 2: bank, 3: t["Tanggal"], 4: jenis,
+            5: ket1,
+            6: ket2,
             9: t["Kredit"],   # uang masuk  -> kolom Debit
             10: t["Debit"],   # uang keluar -> kolom Kredit
             11: f"=K{r-1}+I{r}-J{r}",
