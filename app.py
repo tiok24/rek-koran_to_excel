@@ -17,7 +17,7 @@ import pandas as pd
 import streamlit as st
 
 from bank_parsers import BANK_PDF, csv_parser
-from bank_parsers.pipeline import olah_csv, olah_pdf
+from bank_parsers.pipeline import csv_bca_terdeteksi, olah_csv, olah_csv_bca, olah_pdf
 
 TEMPLATE_BAWAAN = Path(__file__).resolve().parent / "REKOR_2026.xlsx"
 MIME_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -55,6 +55,11 @@ def olah_pdf_cache(data: bytes, template_bytes: bytes, bank):
 @st.cache_data(show_spinner=False, ttl=3600, max_entries=30)
 def olah_csv_cache(data: bytes, template_bytes: bytes, pemetaan: dict, opsi: dict):
     return olah_csv(data, template_bytes, pemetaan, opsi)
+
+
+@st.cache_data(show_spinner=False, ttl=3600, max_entries=30)
+def olah_csv_bca_cache(data: bytes, template_bytes: bytes):
+    return olah_csv_bca(data, template_bytes)
 
 
 def nama_unik(nama, terpakai):
@@ -120,7 +125,8 @@ def panel_csv(f, data, sidik):
 def main():
     st.set_page_config(page_title="Mutasi Bank ke Excel REKOR", page_icon="📄", layout="wide")
     st.title("📄 Mutasi Rekening → Excel REKOR")
-    st.caption("Unggah PDF mutasi **BCA, CIMB Niaga, Danamon, BRI** atau file **CSV**. "
+    st.caption("Unggah PDF mutasi **BCA, CIMB Niaga, Danamon, BRI** atau file **CSV** "
+               "(CSV KlikBCA Bisnis dikenali otomatis). "
                "Setiap file menghasilkan satu file Excel sesuai template.")
 
     # ---------------- sidebar
@@ -176,7 +182,11 @@ def main():
 
         la_csv = f.name.lower().endswith((".csv", ".txt"))
         try:
-            if la_csv:
+            if la_csv and csv_bca_terdeteksi(data):
+                # CSV KlikBCA Bisnis: nama, no. rekening, periode & saldo dibaca dari file,
+                # tidak perlu pemetaan kolom manual.
+                r = olah_csv_bca_cache(data, template_bytes)
+            elif la_csv:
                 with st.expander(f"⚙️ Pengaturan CSV — {f.name}", expanded=True):
                     pengaturan = panel_csv(f, data, sidik)
                 if pengaturan is None:
@@ -210,6 +220,8 @@ def main():
                            + "\n".join(f"- {p}" for p in r["pesan"]))
             if r["urutan_dibalik"]:
                 st.caption("CSV tercatat terbaru-di-atas; urutan sudah dibalik menjadi kronologis.")
+            for c in r.get("catatan", []):
+                st.caption(f"📝 {c}")
             if r["dilewati"]:
                 st.caption(f"{r['dilewati']} baris tanpa tanggal/nominal valid dilewati "
                            "(judul, total, catatan kaki, dll).")
