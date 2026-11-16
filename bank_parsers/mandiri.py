@@ -21,7 +21,8 @@ from datetime import datetime
 import pdfplumber
 
 from pdf_ke_rekor_bca import kelompok_baris, teks_baris
-from .common import RE_ANGKA, angka, buat_transaksi, nomor_bulan, pilih_arah, set_periode
+from .common import (RE_ANGKA, angka, buat_transaksi, nomor_bulan, pilih_arah,
+                     pisah_ket_bank, set_periode)
 
 NAMA = "MANDIRI"
 
@@ -225,7 +226,8 @@ def _halaman(page, hasil, halaman_pertama):
             t["_remark"] = _gabung(t["detail"])
             t["ket_lengkap"] = _ket_lengkap(t["detail"], t["_ref"])
             t["nama_lawan"] = nama_lawan(t["_remark"])
-            t["ket_bank"] = t["Jenis Transaksi"] = ket_bank(t["_remark"])
+            t["ket_bank"], t["ket_lengkap"] = pisah_ket_bank(ket_bank(t["_remark"]), t["ket_lengkap"])
+            t["Jenis Transaksi"] = t["ket_bank"]
 
     body = [w for w in words if w["top"] > bawah_header]
     for b in kelompok_baris(body):                           # buang footer halaman
