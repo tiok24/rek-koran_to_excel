@@ -59,8 +59,9 @@ def deteksi_bank(sumber):
 def _normalisasi_bca(info, hasil):
     """Lengkapi hasil BCA dengan kolom siap pakai & ringkasan umum (perilaku tulis_excel tidak berubah)."""
     for t in hasil["transaksi"]:
-        t["ket_bank"] = bca.keterangan_bank(t["Jenis Transaksi"], t["jenis_extra"])
-        t["ket_lengkap"] = bca.keterangan_lengkap(t["detail"])
+        t["ket_bank"], t["ket_lengkap"] = bca.pisah_ket_bank(
+            bca.keterangan_bank(t["Jenis Transaksi"], t["jenis_extra"]),
+            bca.keterangan_lengkap(t["detail"]))
         t["nama_lawan"] = bca.nama_lawan(t["Jenis Transaksi"], t["detail"])
     bln, thn = bca.bulan_tahun(info["Periode"])
     if bln:
