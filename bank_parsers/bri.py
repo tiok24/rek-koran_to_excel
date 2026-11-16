@@ -20,6 +20,19 @@ NAMA = "BRI"
 RE_TGL = re.compile(r"^\d{2}/\d{2}/\d{2}$")
 RE_JAM = re.compile(r"^\d{2}:\d{2}:\d{2}$")
 
+# Format "Laporan Transaksi Pinjaman" (KMK/KI) memakai judul induk yang sama dengan giro, tetapi:
+#   - ringkasan berjudul "SALDO POKOK AWAL | TOTAL MUTASI DEBET | TOTAL MUTASI KREDIT | SALDO POKOK AKHIR"
+#   - ada baris "SALDO AWAL" dan "SALDO AKHIR" (tanpa tanggal) di dalam tabel
+#   - Debet = tagihan (menambah kewajiban), Kredit = pembayaran (mengurangi kewajiban)
+#   - kolom Saldo hanya saldo POKOK (tagihan bunga tidak mengubahnya)
+RE_RINGKASAN = re.compile(r"^(Saldo Awal Total|SALDO\s+POKOK\s+AWAL)\b", re.I)
+RE_BATAS_PINJAMAN = re.compile(r"^(SALDO\s+AKHIR|SALDO\s+POKOK\s+AWAL)\b", re.I)
+RE_SALDO_AWAL = re.compile(r"^SALDO\s+AWAL\b", re.I)
+
+
+def _pinjaman(teks_halaman_1):
+    return "LAPORAN TRANSAKSI PINJAMAN" in teks_halaman_1.upper()
+
 
 def cocok(teks_halaman_1):
     return "LAPORAN TRANSAKSI FINANSIAL" in teks_halaman_1.upper()
@@ -59,7 +72,7 @@ def _nama_lawan(uraian):
     return None
 
 
-def _halaman(page, hasil):
+def _halaman(page, hasil, pinjaman=False):
     words = page.extract_words(x_tolerance=2)
     judul = [w for w in words if w["text"] == "Uraian"]
     if not judul:
@@ -75,16 +88,35 @@ def _halaman(page, hasil):
 
     body = [w for w in words if w["top"] > bawah_header]
 
-    # potong di baris ringkasan "Saldo Awal Total Transaksi Debet ..."
+    baris_body = kelompok_baris(body)
+
+    # baris "SALDO AWAL" (pinjaman) tidak punya tanggal: ambil angkanya, lalu buang dari body
+    # supaya tidak menempel ke keterangan transaksi pertama.
+    if pinjaman:
+        for b in baris_body:
+            if RE_SALDO_AWAL.match(teks_baris(b)):
+                angka_b = [w for w in b if RE_ANGKA.match(w["text"])]
+                if angka_b:
+                    hasil["saldo_awal"] = angka(angka_b[-1]["text"])
+                ids = {id(w) for w in b}
+                body = [w for w in body if id(w) not in ids]
+                break
+
+    # potong di akhir tabel transaksi dan baca baris ringkasan
     batas = None
-    for b in kelompok_baris(body):
-        if teks_baris(b).startswith("Saldo Awal Total"):
+    for b in baris_body:
+        t = teks_baris(b)
+        if batas is None and (RE_RINGKASAN.match(t) or (pinjaman and RE_BATAS_PINJAMAN.match(t))):
             batas = b[0]["top"] - 1
+        if RE_RINGKASAN.match(t):
             # baris angka ringkasan = baris berikutnya yang berisi 4 angka
             for b2 in kelompok_baris([w for w in body if w["top"] > b[0]["top"] + 12]):
                 angka_b2 = [w for w in b2 if RE_ANGKA.match(w["text"])]
                 if len(angka_b2) >= 4:
                     sa, td, tk, sk = (angka(w["text"]) for w in angka_b2[:4])
+                    if pinjaman:
+                        # debet bank = tagihan -> "masuk" di REKOR; kredit bank = bayar -> "keluar"
+                        td, tk = tk, td
                     hasil["ringkasan_umum"].update(
                         saldo_awal=sa, total_debit=td, total_kredit=tk, saldo_akhir=sk)
                     hasil["saldo_awal"] = sa
@@ -110,6 +142,8 @@ def _halaman(page, hasil):
 
         uraian = " ".join(teks_baris(b) for b in kelompok_baris(deskripsi)).strip()
         keluar, masuk = pilih_arah(nilai.get("debit"), nilai.get("kredit"))
+        if pinjaman:
+            keluar, masuk = masuk, keluar     # Debet = tagihan (masuk), Kredit = pembayaran (keluar)
         tgl = datetime.strptime(tgl_word["text"], "%d/%m/%y")
         id_teller = " ".join(w["text"] for w in sorted(teller, key=lambda w: w["x0"])) or None
         hasil["transaksi"].append(buat_transaksi(
@@ -121,6 +155,8 @@ def proses(file_obj):
     hasil = {"transaksi": [], "saldo_awal": None, "ringkasan": {}, "ringkasan_umum": {}}
     with pdfplumber.open(file_obj) as pdf:
         info = _header(pdf)
+        pinjaman = _pinjaman(pdf.pages[0].extract_text() or "")
+        hasil["saldo_pokok"] = pinjaman      # kolom Saldo = saldo pokok -> cek saldo berjalan dilewati
         for page in pdf.pages:
-            _halaman(page, hasil)
+            _halaman(page, hasil, pinjaman)
     return info, hasil
