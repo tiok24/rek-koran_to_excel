@@ -1,5 +1,5 @@
 """
-Konversi mutasi rekening -> Excel REKOR lewat baris perintah (PDF BCA/CIMB/Danamon/BRI dan CSV).
+Konversi mutasi rekening -> Excel REKOR lewat baris perintah (PDF BCA/CIMB/Danamon/BRI/Mandiri dan CSV).
 
     python konversi.py a.pdf b.pdf data.csv        # file tertentu
     python konversi.py folder_mutasi               # semua .pdf/.csv di folder
