@@ -92,7 +92,16 @@ def nama_setelah_kepada(words):
     k = min(k, key=lambda w: w["top"])
     kiri = [w for w in words if w["x0"] < 330 and k["bottom"] - 1 < w["top"] < k["bottom"] + 40]
     baris = kelompok_baris(kiri)
-    return teks_baris(baris[0]) if baris else None
+    if not baris:
+        return None
+    # kotak alamat bisa sebaris dengan kolom kanan ("CV GASPER   Periode Transaksi : ..."):
+    # potong di celah horizontal besar (> 60 pt); jarak antarkata normal hanya ~4 pt.
+    nama = [baris[0][0]]
+    for w in baris[0][1:]:
+        if w["x0"] - nama[-1]["x1"] > 60:
+            break
+        nama.append(w)
+    return teks_baris(nama)
 
 
 def pusat_kolom(zona_header, nama):
@@ -196,7 +205,8 @@ def validasi_umum(hasil):
         pesan.append(f"Jumlah transaksi masuk terbaca {n_masuk}, di dokumen {rg['n_kredit']}.")
 
     tak_cocok = 0
-    if saldo_awal is not None:
+    # Laporan pinjaman: kolom Saldo hanya saldo pokok, jadi tidak sama dengan debit/kredit berjalan.
+    if saldo_awal is not None and not hasil.get("saldo_pokok"):
         berjalan = saldo_awal
         for t in trx:
             berjalan += (t["Kredit"] or 0) - (t["Debit"] or 0)
