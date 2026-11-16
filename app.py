@@ -1,5 +1,5 @@
 """
-Aplikasi Streamlit: mutasi rekening (PDF BCA / CIMB Niaga / Danamon / BRI, atau CSV) -> Excel
+Aplikasi Streamlit: mutasi rekening (PDF BCA / CIMB Niaga / Danamon / BRI / Mandiri, atau CSV) -> Excel
 template REKOR.  1 file = 1 file Excel.
 
 Jalankan lokal : streamlit run app.py
@@ -125,7 +125,7 @@ def panel_csv(f, data, sidik):
 def main():
     st.set_page_config(page_title="Mutasi Bank ke Excel REKOR", page_icon="📄", layout="wide")
     st.title("📄 Mutasi Rekening → Excel REKOR")
-    st.caption("Unggah PDF mutasi **BCA, CIMB Niaga, Danamon, BRI** atau file **CSV** "
+    st.caption("Unggah PDF mutasi **BCA, CIMB Niaga, Danamon, BRI, Mandiri** atau file **CSV** "
                "(CSV KlikBCA Bisnis dikenali otomatis). "
                "Setiap file menghasilkan satu file Excel sesuai template.")
 
