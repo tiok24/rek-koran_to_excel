@@ -11,7 +11,7 @@ penukaran itu dilakukan oleh tulis_excel(), jadi parser tidak perlu memikirkanny
 import re
 from datetime import datetime
 
-from pdf_ke_rekor_bca import BULAN, kelompok_baris, teks_baris  # noqa: F401  (dipakai ulang)
+from pdf_ke_rekor_bca import BULAN, kelompok_baris, pisah_ket_bank, teks_baris  # noqa: F401  (dipakai ulang)
 
 TOLERANSI = 0.01
 
@@ -136,7 +136,9 @@ def baris_dengan_kata(words, teks_awal, top_min=0):
 
 def buat_transaksi(tanggal, ket_bank, ket_lengkap, nama_lawan, keluar, masuk, saldo,
                    detail=None):
-    """Dict transaksi dalam skema yang dipakai tulis_excel()/UI."""
+    """Dict transaksi dalam skema yang dipakai tulis_excel()/UI.
+    Keterangan Bank dipotong di DB/CR/TARIKAN; sisanya masuk Keterangan 1 (lihat pisah_ket_bank)."""
+    ket_bank, ket_lengkap = pisah_ket_bank(ket_bank, ket_lengkap)
     return {
         "Tanggal": tanggal,
         "Jenis Transaksi": ket_bank,
