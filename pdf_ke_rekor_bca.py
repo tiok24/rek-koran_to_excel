@@ -289,6 +289,30 @@ def keterangan_bank(jenis, jenis_extra):
     return " ".join([jenis] + sisa).strip()
 
 
+RE_PISAH_DBCR = re.compile(r"^(.+?\b(?:DB|CR))\b\s*(.*)$", re.I)     # harus ada teks sebelum DB/CR
+RE_PISAH_TARIKAN = re.compile(r"^(.*?\bTARIKAN)\b\s*(.*)$", re.I)
+
+
+def pisah_ket_bank(ket_bank, ket_lengkap):
+    """Kolom 'Keterangan Bank' berhenti pada kata DB / CR (mis. 'TRSF E-BANKING CR') atau
+    pada kata TARIKAN; teks sesudahnya dipindah ke awal 'Keterangan 1' (transaksi).
+    Bila ada keduanya, yang muncul lebih dulu yang dipakai. 'DB OTOMATIS' / 'KR OTOMATIS'
+    tidak dipecah (tidak ada teks sebelum DB). Idempoten: aman dipanggil dua kali.
+    -> (ket_bank, ket_lengkap)"""
+    if not ket_bank:
+        return ket_bank, ket_lengkap
+    kandidat = [m for m in (RE_PISAH_DBCR.match(ket_bank), RE_PISAH_TARIKAN.match(ket_bank)) if m]
+    if not kandidat:
+        return ket_bank, ket_lengkap
+    m = min(kandidat, key=lambda x: len(x.group(1)))
+    depan, sisa = m.group(1).strip(), m.group(2).strip()
+    if not sisa:
+        return ket_bank, ket_lengkap
+    if ket_lengkap and ket_bank in ket_lengkap:         # keterangan lengkap sudah memuat teksnya (mis. Mandiri)
+        return depan, ket_lengkap
+    return depan, f"{sisa} {ket_lengkap}".strip() if ket_lengkap else sisa
+
+
 def keterangan_lengkap(detail):
     """Semua baris keterangan transaksi di PDF digabung jadi satu teks (kolom E)."""
     teks = " ".join(x.strip() for x in detail if x.strip())
@@ -335,8 +359,8 @@ def tulis_excel(template, info, hasil, path_output, bank=BANK):
         if "ket_bank" in t:   # parser bank lain sudah menyiapkan ketiga kolom ini
             jenis, ket1, ket2 = t["ket_bank"], t["ket_lengkap"], t["nama_lawan"]
         else:                 # BCA (perilaku asli)
-            jenis = keterangan_bank(t["Jenis Transaksi"], t["jenis_extra"])
-            ket1 = keterangan_lengkap(t["detail"])
+            jenis, ket1 = pisah_ket_bank(keterangan_bank(t["Jenis Transaksi"], t["jenis_extra"]),
+                                         keterangan_lengkap(t["detail"]))
             ket2 = nama_lawan(t["Jenis Transaksi"], t["detail"])
         nilai = {
             1: no, 2: bank, 3: t["Tanggal"], 4: jenis,
