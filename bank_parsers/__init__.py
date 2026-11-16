@@ -1,5 +1,5 @@
 """
-Pintu masuk tunggal untuk semua format:  PDF BCA, CIMB, Danamon, BRI  dan  CSV.
+Pintu masuk tunggal untuk semua format:  PDF BCA, CIMB, Danamon, BRI, Mandiri  dan  CSV.
 
     bank, info, hasil = proses_pdf_auto(file_atau_bytes)            # deteksi bank otomatis
     bank, info, hasil = proses_pdf_auto(file_atau_bytes, bank="BRI")  # paksa bank tertentu
@@ -14,11 +14,11 @@ import io
 import pdfplumber
 
 import pdf_ke_rekor_bca as bca
-from . import bca_csv, bri, cimb, csv_parser, danamon
+from . import bca_csv, bri, cimb, csv_parser, danamon, mandiri
 from .common import nama_file_hasil, validasi_umum  # noqa: F401
 
-PARSER_PDF = {"CIMB": cimb, "DANAMON": danamon, "BRI": bri}
-BANK_PDF = ["BCA", "CIMB", "DANAMON", "BRI"]
+PARSER_PDF = {"CIMB": cimb, "DANAMON": danamon, "BRI": bri, "MANDIRI": mandiri}
+BANK_PDF = ["BCA", "CIMB", "DANAMON", "BRI", "MANDIRI"]
 
 
 def _ke_stream(sumber):
@@ -45,10 +45,10 @@ def _mirip_bca(teks):
 
 
 def deteksi_bank(sumber):
-    """'BCA' | 'CIMB' | 'DANAMON' | 'BRI' | None. Urutan penting: teks transaksi BRI bisa
+    """'BCA' | 'CIMB' | 'DANAMON' | 'BRI' | 'MANDIRI' | None. Urutan penting: teks transaksi BRI bisa
     menyebut bank lain (mis. 'DANAMON-BRI'), jadi ciri judul dokumen diperiksa dulu."""
     teks = _teks_halaman_1(sumber)
-    for nama in ("BRI", "CIMB", "DANAMON"):
+    for nama in ("BRI", "CIMB", "DANAMON", "MANDIRI"):
         if PARSER_PDF[nama].cocok(teks):
             return nama
     if _mirip_bca(teks):
