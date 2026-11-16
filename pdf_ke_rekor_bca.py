@@ -290,7 +290,9 @@ def keterangan_bank(jenis, jenis_extra):
 
 
 RE_PISAH_DBCR = re.compile(r"^(.+?\b(?:DB|CR))\b\s*(.*)$", re.I)     # harus ada teks sebelum DB/CR
-RE_PISAH_TARIKAN = re.compile(r"^(.*?\bTARIKAN)\b\s*(.*)$", re.I)
+# TARIK / TARIKAN, dengan kata TUNAI yang mengikutinya tetap ikut di Keterangan Bank
+RE_PISAH_TARIKAN = re.compile(r"^(.*?\bTARIK(?:AN)?(?:\s+TUNAI)?)\b\s*(.*)$", re.I)
+RE_TUNAI_AWAL = re.compile(r"^(TUNAI)\b\s*(.*)$", re.I)                 # sisa yang diawali TUNAI
 
 
 def pisah_ket_bank(ket_bank, ket_lengkap):
@@ -306,8 +308,11 @@ def pisah_ket_bank(ket_bank, ket_lengkap):
         return ket_bank, ket_lengkap
     m = min(kandidat, key=lambda x: len(x.group(1)))
     depan, sisa = m.group(1).strip(), m.group(2).strip()
+    mt = RE_TUNAI_AWAL.match(sisa)                       # "...CR TUNAI", "...DB TUNAI" -> TUNAI tetap di depan
+    if mt:
+        depan, sisa = f"{depan} {mt.group(1)}", mt.group(2).strip()
     if not sisa:
-        return ket_bank, ket_lengkap
+        return depan, ket_lengkap
     if ket_lengkap and ket_bank in ket_lengkap:         # keterangan lengkap sudah memuat teksnya (mis. Mandiri)
         return depan, ket_lengkap
     return depan, f"{sisa} {ket_lengkap}".strip() if ket_lengkap else sisa
