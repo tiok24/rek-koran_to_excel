@@ -18,13 +18,20 @@ import csv
 import re
 
 import pdf_ke_rekor_bca as bca
-from .common import buat_transaksi, set_periode, tahun_untuk_bulan
+from datetime import datetime
+
+from .common import buat_transaksi, nomor_bulan, set_periode, tahun_untuk_bulan
 from .csv_parser import _decode, parse_angka, parse_tanggal
 
 NAMA = "BCA CSV"
 LABEL_EXCEL = "BCA"
 
 RE_TGL = re.compile(r"^(\d{2})/(\d{2})(?:/(\d{2}|\d{4}))?$")
+# Tanggal rusak akibat CSV pernah dibuka & disimpan ulang di Excel (locale US/mm-dd): teks "01/09"
+# (1 September) dibaca sebagai 9 Januari lalu ditampilkan "9-Jan". Hari dan bulannya TERTUKAR:
+# angka di depan = bulan asli, nama bulan = hari asli. Tanggal dengan hari > 12 ("15/09") tidak
+# ikut rusak, sehingga satu file bisa berisi dua gaya tanggal sekaligus.
+RE_TGL_EXCEL = re.compile(r"^(\d{1,2})[-\s]([A-Za-z]{3,9})\.?(?:[-\s](\d{2}|\d{4}))?$")
 RE_JUMLAH = re.compile(r"^\s*([\d,]+\.\d{2})\s*(DB|CR)\s*$", re.I)
 RE_NOMINAL_DEPAN = re.compile(r"^(\d+\.\d{2})\s*")
 RE_NOMINAL_AKHIR = re.compile(r"\s+(\d+\.\d{2})\s*$")
@@ -35,6 +42,32 @@ TOLERANSI = 0.01
 _TGL = r"\d{1,2}\s*/\s*\d{1,2}(?:\s*/\s*\d{2,4})?"
 RE_TANGGAL_SAJA = re.compile(rf"^(?:(?:TANGGAL|TGL)\s*:?\s*)?{_TGL}$", re.I)
 RE_TANGGAL_AWAL = re.compile(rf"^(?:TANGGAL|TGL)\s*:?\s*{_TGL}\s+", re.I)
+
+
+def _tgl_excel_rusak(kode, awal, akhir):
+    """'9-Jan' -> datetime(2026, 9, 1) bila tanggal ini hasil salah-tafsir Excel; None bila bukan.
+
+    Dua kemungkinan dicoba dan hanya yang jatuh DI DALAM periode laporan yang diterima:
+      1. tertukar (kasus Excel mm/dd) : hari = nomor bulan, bulan = angka di depan
+      2. apa adanya ('15-Sep')        : hari = angka di depan, bulan = nama bulan
+    """
+    m = RE_TGL_EXCEL.match(kode)
+    if not m:
+        return None
+    depan, nama, thn = int(m.group(1)), m.group(2), m.group(3)
+    bln_nama = nomor_bulan(nama)
+    if not bln_nama:
+        return None
+    kandidat = []
+    for d, b in ((bln_nama, depan), (depan, bln_nama)):          # urutan = prioritas
+        y = (int(thn) + (2000 if len(thn) == 2 else 0)) if thn else tahun_untuk_bulan(b, awal, akhir)
+        try:
+            tgl = datetime(y, b, d)
+        except ValueError:
+            continue
+        if awal <= tgl <= akhir:
+            kandidat.append(tgl)
+    return kandidat[0] if kandidat else None
 
 
 def cocok(data):
@@ -240,7 +273,7 @@ def proses_csv(data):
         raise ValueError("Baris 'Periode' tidak ditemukan di CSV BCA.")
     awal, akhir = meta["periode"]
 
-    transaksi, catatan, dilewati = [], [], 0
+    transaksi, catatan, dilewati, n_excel = [], [], 0, 0
     for g in baris:
         sel = next(csv.reader([g]), [])
         if len(sel) < 5:
@@ -248,7 +281,11 @@ def proses_csv(data):
         kode = sel[0].strip()
         pending = kode.upper() == "PEND"
         mt = RE_TGL.match(kode)
-        if not (pending or mt):
+        tgl_excel = None if (pending or mt) else _tgl_excel_rusak(kode, awal, akhir)
+        if not (pending or mt or tgl_excel):
+            if RE_JUMLAH.match(sel[-2]):          # ada nominal DB/CR tapi tanggal tak dikenal: jangan hilang diam-diam
+                dilewati += 1
+                catatan.append(f"Baris dilewati (format tanggal tidak dikenal '{kode}'): {sel[1][:40]}")
             continue
 
         mj = RE_JUMLAH.match(sel[-2])
@@ -262,6 +299,9 @@ def proses_csv(data):
 
         if pending:
             tgl = akhir
+        elif tgl_excel:
+            tgl = tgl_excel
+            n_excel += 1
         else:
             d, bln, thn = int(mt.group(1)), int(mt.group(2)), mt.group(3)
             thn = (int(thn) + (2000 if len(thn) == 2 else 0)) if thn else tahun_untuk_bulan(bln, awal, akhir)
@@ -283,6 +323,10 @@ def proses_csv(data):
     if not transaksi:
         raise ValueError("Tidak ada transaksi yang terbaca dari CSV BCA.")
 
+    if n_excel:
+        catatan.insert(0, f"{n_excel} tanggal berformat rusak seperti '9-Jan' (CSV pernah dibuka/disimpan "
+                          f"di Excel) dikembalikan ke tanggal asli berdasarkan periode laporan. "
+                          f"Lebih aman: unduh ulang CSV dari KlikBCA dan jangan disimpan lewat Excel.")
     n_pend = sum(1 for t in transaksi if t["pending"])
     if n_pend:
         catatan.insert(0, f"{n_pend} transaksi berstatus PEND (belum posting, tanpa tanggal di CSV) "
