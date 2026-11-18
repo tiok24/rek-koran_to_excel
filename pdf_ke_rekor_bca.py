@@ -282,10 +282,18 @@ def nama_lawan(jenis, detail):
     return " ".join(d)                                # setoran, tarikan, cek, dll
 
 
+RE_PENANDA_TGL = re.compile(r"^(?:TANGGAL|TGL)\s*:?\s*\d{1,2}\s*/\s*\d{1,2}(?:\s*/\s*\d{2,4})?\s*", re.I)
+
+
 def keterangan_bank(jenis, jenis_extra):
-    """Jenis transaksi untuk kolom D. Baris tambahan yang berisi tanggal
-    (mis. 'TANGGAL :12/02') tidak dimasukkan."""
-    sisa = [x for x in jenis_extra if not re.search(r"\d{1,2}\s*/\s*\d{1,2}", x)]
+    """Jenis transaksi untuk kolom D. Baris tambahan yang berisi tanggal (mis. 'TANGGAL :12/02')
+    tidak dimasukkan. Bila penanda tanggal diikuti teks lain di baris yang sama
+    ('TANGGAL :02/10 MID : 8850...'), hanya penandanya yang dibuang; teksnya tetap dipakai."""
+    sisa = []
+    for x in jenis_extra:
+        y = RE_PENANDA_TGL.sub("", x).strip()
+        if y and not re.search(r"\d{1,2}\s*/\s*\d{1,2}", y):
+            sisa.append(y)
     return " ".join([jenis] + sisa).strip()
 
 
@@ -296,7 +304,14 @@ RE_TUNAI_AWAL = re.compile(r"^(TUNAI)\b\s*(.*)$", re.I)                 # sisa y
 # KR OTOMATIS / KARTU KREDIT yang diikuti data merchant "MID : ..." (settlement kartu): Keterangan
 # Bank cukup jenisnya saja, mulai dari "MID" dipindah ke Keterangan 1. "KR OTOMATIS LLG-..." (kliring)
 # tidak terkena karena tidak diikuti MID. \s* karena di CSV teksnya bisa menempel ("KR OTOMATISMID").
-RE_PISAH_MID = re.compile(r"^(KR OTOMATIS|KARTU KREDIT)\s*(MID\s*:.*)$", re.I | re.S)
+# Penanda tanggal valuta di antaranya ("KR OTOMATIS TANGGAL :02/10 MID : ...") dibuang, sama seperti
+# penanda tanggal di tempat lain (bukan bagian dari keterangan transaksi).
+RE_JENIS_TGL_SAJA = re.compile(
+    r"^(KR OTOMATIS|KARTU KREDIT)\s*(?:TANGGAL|TGL)\s*:?\s*\d{1,2}\s*/\s*\d{1,2}(?:\s*/\s*\d{2,4})?$", re.I)
+RE_PISAH_MID = re.compile(
+    r"^(KR OTOMATIS|KARTU KREDIT)\s*"
+    r"(?:(?:TANGGAL|TGL)\s*:?\s*\d{1,2}\s*/\s*\d{1,2}(?:\s*/\s*\d{2,4})?\s*)?"
+    r"(MID\s*:.*)$", re.I | re.S)
 
 
 def pisah_ket_bank(ket_bank, ket_lengkap):
@@ -308,6 +323,9 @@ def pisah_ket_bank(ket_bank, ket_lengkap):
     -> (ket_bank, ket_lengkap)"""
     if not ket_bank:
         return ket_bank, ket_lengkap
+    mt0 = RE_JENIS_TGL_SAJA.match(ket_bank.strip())
+    if mt0:                                              # "KR OTOMATIS TANGGAL :02/10" -> "KR OTOMATIS"
+        ket_bank = mt0.group(1)
     mm = RE_PISAH_MID.match(ket_bank.strip())
     if mm:
         depan, sisa = mm.group(1).strip(), re.sub(r"\s+", " ", mm.group(2)).strip()
