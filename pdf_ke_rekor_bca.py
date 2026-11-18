@@ -293,16 +293,27 @@ RE_PISAH_DBCR = re.compile(r"^(.+?\b(?:DB|CR))\b\s*(.*)$", re.I)     # harus ada
 # TARIK / TARIKAN, dengan kata TUNAI yang mengikutinya tetap ikut di Keterangan Bank
 RE_PISAH_TARIKAN = re.compile(r"^(.*?\bTARIK(?:AN)?(?:\s+TUNAI)?)\b\s*(.*)$", re.I)
 RE_TUNAI_AWAL = re.compile(r"^(TUNAI)\b\s*(.*)$", re.I)                 # sisa yang diawali TUNAI
+# KR OTOMATIS / KARTU KREDIT yang diikuti data merchant "MID : ..." (settlement kartu): Keterangan
+# Bank cukup jenisnya saja, mulai dari "MID" dipindah ke Keterangan 1. "KR OTOMATIS LLG-..." (kliring)
+# tidak terkena karena tidak diikuti MID. \s* karena di CSV teksnya bisa menempel ("KR OTOMATISMID").
+RE_PISAH_MID = re.compile(r"^(KR OTOMATIS|KARTU KREDIT)\s*(MID\s*:.*)$", re.I | re.S)
 
 
 def pisah_ket_bank(ket_bank, ket_lengkap):
     """Kolom 'Keterangan Bank' berhenti pada kata DB / CR (mis. 'TRSF E-BANKING CR') atau
     pada kata TARIKAN; teks sesudahnya dipindah ke awal 'Keterangan 1' (transaksi).
     Bila ada keduanya, yang muncul lebih dulu yang dipakai. 'DB OTOMATIS' / 'KR OTOMATIS'
-    tidak dipecah (tidak ada teks sebelum DB). Idempoten: aman dipanggil dua kali.
+    tidak dipecah (tidak ada teks sebelum DB). 'KR OTOMATIS'/'KARTU KREDIT' yang diikuti 'MID : ...'
+    dipotong tepat sebelum MID. Idempoten: aman dipanggil dua kali.
     -> (ket_bank, ket_lengkap)"""
     if not ket_bank:
         return ket_bank, ket_lengkap
+    mm = RE_PISAH_MID.match(ket_bank.strip())
+    if mm:
+        depan, sisa = mm.group(1).strip(), re.sub(r"\s+", " ", mm.group(2)).strip()
+        if ket_lengkap and sisa in ket_lengkap:          # sudah termuat (aman dipanggil dua kali)
+            return depan, ket_lengkap
+        return depan, f"{sisa} {ket_lengkap}".strip() if ket_lengkap else sisa
     kandidat = [m for m in (RE_PISAH_DBCR.match(ket_bank), RE_PISAH_TARIKAN.match(ket_bank)) if m]
     if not kandidat:
         return ket_bank, ket_lengkap
