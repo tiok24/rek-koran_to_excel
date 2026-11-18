@@ -48,7 +48,7 @@ def _susun(bank, info, hasil, template_bytes, label=None):
 
 
 def olah_pdf(data: bytes, template_bytes: bytes, bank=None):
-    """PDF (BCA/CIMB/Danamon/BRI/Mandiri) -> hasil. bank=None = deteksi otomatis."""
+    """PDF (BCA/CIMB/Danamon/BRI/Mandiri/BNI) -> hasil. bank=None = deteksi otomatis."""
     bank, info, hasil = proses_pdf_auto(data, bank=bank)
     return _susun(bank, info, hasil, template_bytes)
 
