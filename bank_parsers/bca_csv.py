@@ -79,6 +79,18 @@ def cocok(data):
 
 
 # --------------------------------------------------------------------------
+def _urai_baris(g):
+    """Satu baris CSV -> daftar sel. Menangani baris yang SELURUHNYA terbungkus kutip (hasil simpan
+    ulang di Excel/Sheets): '"04/09,""BIAYA ADM"",""0000"",...' terbaca csv sebagai 1 sel berisi
+    teks CSV lagi, jadi sel itu diurai sekali lagi."""
+    sel = next(csv.reader([g]), [])
+    if len(sel) == 1 and "," in sel[0]:
+        dalam = next(csv.reader([sel[0]]), [])
+        if len(dalam) >= 5:
+            return dalam
+    return sel
+
+
 def _sambung_baris(teks):
     """Baris yang diawali koma = lanjutan transaksi sebelumnya -> digabung jadi satu baris."""
     hasil = []
@@ -90,36 +102,53 @@ def _sambung_baris(teks):
     return hasil
 
 
+def _angka_en(teks):
+    """'-3,490,200,856.46' -> float (tanda minus dipertahankan: rekening bisa bersaldo negatif/overdraft)."""
+    return float(teks.replace(",", ""))
+
+
+RE_ANGKA_BEBAS = r"(-?[\d,]*\d\.\d{2})"
+
+
 def _meta(baris):
-    """Nama, No. rekening, periode & footer ringkasan dari baris-baris non-transaksi."""
+    """Nama, No. rekening, periode & footer ringkasan dari baris-baris non-transaksi.
+
+    Dibaca dari TEKS MENTAH baris (bukan dari sel CSV): pada file yang rusak, baris footer terpecah
+    di setiap koma ribuan ('Saldo Awal : -3' | '490' | '200' ...) atau terbungkus kutip satu sel.
+    """
     m = {"nama": "", "no_rekening": "", "periode": None, "mata_uang": None,
          "saldo_awal": None, "saldo_akhir": None,
          "total_debit": None, "n_debit": None, "total_kredit": None, "n_kredit": None}
+
+    def nilai(pola, teks):
+        mm = re.match(pola, teks, re.I)
+        return mm.group(1).strip(' ,"') if mm else None
+
     for g in baris:
-        sel = next(csv.reader([g]), [])
-        if not sel:
-            continue
-        s = sel[0].strip()
-        if re.match(r"No\.?\s*rekening", s, re.I):
-            m["no_rekening"] = s.split(":", 1)[1].strip()
-        elif re.match(r"Nama\s*:", s, re.I):
-            m["nama"] = s.split(":", 1)[1].strip()
-        elif re.match(r"Periode\s*:", s, re.I):
-            p = re.findall(r"\d{1,2}/\d{1,2}/\d{2,4}", s)
+        t = g.strip().lstrip('"').replace('""', '"')
+        if re.match(r"No\.?\s*rekening\s*:", t, re.I):
+            m["no_rekening"] = nilai(r"No\.?\s*rekening\s*:\s*(.*)", t) or ""
+        elif re.match(r"Nama\s*:", t, re.I):
+            m["nama"] = nilai(r"Nama\s*:\s*(.*)", t) or ""
+        elif re.match(r"Periode\s*:", t, re.I):
+            p = re.findall(r"\d{1,2}/\d{1,2}/\d{2,4}", t)
             if len(p) == 2:
                 m["periode"] = (parse_tanggal(p[0]), parse_tanggal(p[1]))
-        elif re.match(r"Kode Mata Uang", s, re.I):
-            m["mata_uang"] = s.split(":", 1)[1].strip()
-        elif re.match(r"Saldo Awal\s*:", s, re.I):
-            m["saldo_awal"] = parse_angka(s.split(":", 1)[1], "en")
-        elif re.match(r"Saldo Akhir\s*:", s, re.I):
-            m["saldo_akhir"] = parse_angka(s.split(":", 1)[1], "en")
-        elif re.match(r"Mutasi Debet\s*:", s, re.I):
-            m["total_debit"] = parse_angka(s.split(":", 1)[1], "en")
-            m["n_debit"] = int(sel[1]) if len(sel) > 1 and sel[1].strip().isdigit() else None
-        elif re.match(r"Mutasi Kredit\s*:", s, re.I):
-            m["total_kredit"] = parse_angka(s.split(":", 1)[1], "en")
-            m["n_kredit"] = int(sel[1]) if len(sel) > 1 and sel[1].strip().isdigit() else None
+        elif re.match(r"Kode Mata Uang", t, re.I):
+            m["mata_uang"] = nilai(r"Kode Mata Uang\s*:\s*(.*)", t)
+        elif re.match(r"Saldo Awal\s*:", t, re.I):
+            a = re.match(r"Saldo Awal\s*:\s*" + RE_ANGKA_BEBAS, t, re.I)
+            m["saldo_awal"] = _angka_en(a.group(1)) if a else None
+        elif re.match(r"Saldo Akhir\s*:", t, re.I):
+            a = re.match(r"Saldo Akhir\s*:\s*" + RE_ANGKA_BEBAS, t, re.I)
+            m["saldo_akhir"] = _angka_en(a.group(1)) if a else None
+        else:
+            for kunci, k_total, k_n in (("Debet", "total_debit", "n_debit"),
+                                        ("Kredit", "total_kredit", "n_kredit")):
+                a = re.match(rf"Mutasi {kunci}\s*:\s*" + RE_ANGKA_BEBAS + r'(?:\s*,\s*"?(\d+))?', t, re.I)
+                if a:
+                    m[k_total] = _angka_en(a.group(1))
+                    m[k_n] = int(a.group(2)) if a.group(2) else None
     return m
 
 
@@ -275,7 +304,7 @@ def proses_csv(data):
 
     transaksi, catatan, dilewati, n_excel = [], [], 0, 0
     for g in baris:
-        sel = next(csv.reader([g]), [])
+        sel = _urai_baris(g)
         if len(sel) < 5:
             continue
         kode = sel[0].strip()
