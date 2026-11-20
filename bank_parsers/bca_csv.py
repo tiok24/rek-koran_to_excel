@@ -145,7 +145,7 @@ def _meta(baris):
         else:
             for kunci, k_total, k_n in (("Debet", "total_debit", "n_debit"),
                                         ("Kredit", "total_kredit", "n_kredit")):
-                a = re.match(rf"Mutasi {kunci}\s*:\s*" + RE_ANGKA_BEBAS + r'(?:\s*,\s*"?(\d+))?', t, re.I)
+                a = re.match(rf"Mutasi {kunci}\s*:\s*" + RE_ANGKA_BEBAS + r'(?:"?\s*,\s*"?(\d+))?', t, re.I)
                 if a:
                     m[k_total] = _angka_en(a.group(1))
                     m[k_n] = int(a.group(2)) if a.group(2) else None
@@ -307,18 +307,22 @@ def proses_csv(data):
         sel = _urai_baris(g)
         if len(sel) < 5:
             continue
+        # Posisi kolom Jumlah dicari dari isinya ('3,600,000.00 CR'), bukan dari ujung baris:
+        # baris data bisa berakhir koma (sel kosong) atau memuat catatan manual di kolom ke-6
+        # ('dari bca899'), sehingga sel[-2]/sel[-1] bukan lagi Jumlah/Saldo.
+        ij = next((i for i in range(len(sel) - 1, 0, -1) if RE_JUMLAH.match(sel[i])), None)
         kode = sel[0].strip()
         pending = kode.upper() == "PEND"
         mt = RE_TGL.match(kode)
         tgl_excel = None if (pending or mt) else _tgl_excel_rusak(kode, awal, akhir)
         if not (pending or mt or tgl_excel):
-            if RE_JUMLAH.match(sel[-2]):          # ada nominal DB/CR tapi tanggal tak dikenal: jangan hilang diam-diam
+            if ij is not None:                    # ada nominal DB/CR tapi tanggal tak dikenal: jangan hilang diam-diam
                 dilewati += 1
                 catatan.append(f"Baris dilewati (format tanggal tidak dikenal '{kode}'): {sel[1][:40]}")
             continue
 
-        mj = RE_JUMLAH.match(sel[-2])
-        saldo = parse_angka(sel[-1], "en")
+        mj = RE_JUMLAH.match(sel[ij]) if ij is not None else None
+        saldo = parse_angka(sel[ij + 1], "en") if ij is not None and ij + 1 < len(sel) else None
         if not mj:
             dilewati += 1
             catatan.append(f"Baris dilewati (jumlah tidak terbaca): {kode} {sel[1][:40]}")
@@ -340,7 +344,8 @@ def proses_csv(data):
                 catatan.append(f"Baris dilewati (tanggal tidak valid): {kode}")
                 continue
 
-        jenis, detail = _pecah_keterangan(sel[1:-3] if len(sel) > 5 else sel[1:2], jumlah)
+        # keterangan = sel[1 .. ij-2]; sel[ij-1] = kolom Cabang (mis. '64'), sel[ij] = Jumlah
+        jenis, detail = _pecah_keterangan(sel[1:ij - 1] if ij > 2 else sel[1:2], jumlah)
         t = buat_transaksi(
             tgl, bca.keterangan_bank(jenis, []), bca.keterangan_lengkap(detail),
             _bersihkan_nama(_nama_csv(jenis, detail)),
@@ -380,4 +385,9 @@ def proses_csv(data):
 
 
 def _bersihkan_nama(nama):
-    return re.sub(r"\s+", " ", nama).strip(" ,") or None if nama else nama
+    if not nama:
+        return nama
+    nama = re.sub(r"\s+", " ", nama).strip(" ,")
+    # catatan pengirim huruf besar yang ikut terbaca sebagai nama: 'BYR TAG ADISEN' -> 'ADISEN'
+    nama = re.sub(r"^(?:BYR ?TAG|BYR)\s+(?=\S)", "", nama, flags=re.I)
+    return nama or None
